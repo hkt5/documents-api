@@ -45,6 +45,8 @@ public class DocumentsController {
         try {
             File file1 = new File("/home/gruhol/Dokumenty/wojtek.docx");
             File file2 = new File("/home/gruhol/Dokumenty/wojtek2.docx");
+            //File file1 = new File("C:\\Prywatne\\wojtek.docx");
+            //File file2 = new File("C:\\Prywatne\\wojtek2.docx");
             Path tempDirSource = Files.createTempDirectory("");
             Path tempDirToCompare = Files.createTempDirectory("");
             unzip.unzip(file1.toPath(), tempDirSource);
