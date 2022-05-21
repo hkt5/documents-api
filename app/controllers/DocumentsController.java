@@ -1,48 +1,51 @@
 package controllers;
 
+import akka.actor.*;
 import com.fasterxml.jackson.databind.JsonNode;
-import logic.CompareFile;
-import logic.unzip.UnzipFileToDirectoryController;
-import play.libs.concurrent.HttpExecutionContext;
-import play.mvc.Http;
-import play.mvc.Result;
-import javax.inject.Inject;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import play.libs.Json;
+import play.mvc.*;
+import scala.compat.java8.FutureConverters;
+import javax.inject.*;
 import java.io.File;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import static akka.pattern.Patterns.ask;
 
-import static play.mvc.Results.badRequest;
-import static play.mvc.Results.ok;
+@Singleton
+public class DocumentsController extends Controller {
 
-public class DocumentsController {
-
-    HttpExecutionContext httpExecutionContext;
-    UnzipFileToDirectoryController unzip = new UnzipFileToDirectoryController();
+    final ActorRef compareActor;
 
     @Inject
-    public DocumentsController(HttpExecutionContext httpExecutionContext) {
-        this.httpExecutionContext = httpExecutionContext;
+    public DocumentsController(ActorSystem system) {
+        compareActor = system.actorOf(CompareActor.getProps());
     }
 
-    public Result getShit() {
-        File file1 = new File("/home/gruhol/Dokumenty/wojtek.docx");
-        File file2 = new File("/home/gruhol/Dokumenty/wojtek2.docx");
-        CompareFile compareFile = new CompareFile(file1, file2);
-        return ok("Comare: " + compareFile.perform().getResultData());
-    }
-
-    public Result sayHello(Http.Request request) {
+    public CompletionStage<Result> compare(Http.Request request) {
+        String stringOriginalFile;
+        String stringCompareFile;
         JsonNode json = request.body().asJson();
         if (json == null) {
-            return badRequest("Expecting Json data");
+            return CompletableFuture.supplyAsync(() -> {
+                ObjectNode result = Json.newObject();
+                result.put("json error", "Expecting Json data");
+                return badRequest(result);
+            });
         } else {
-            String name = json.findPath("name").textValue();
-            if (name == null) {
-                return badRequest("Missing parameter [name]");
-            } else {
-                return ok("Hello " + name);
-            }
+            stringOriginalFile = json.findPath("originalFile").textValue();
+            stringCompareFile = json.findPath("compareFile").textValue();
         }
+        if (stringOriginalFile == null && stringCompareFile == null) {
+            return CompletableFuture.supplyAsync(() -> {
+                ObjectNode result = Json.newObject();
+                result.put("json error", "Missing parameter [originalFile] or [compareFile]");
+                return badRequest(result);
+            });
+        }
+        File originalFile = new File(stringOriginalFile);
+        File compareFile = new File(stringCompareFile);
+        return FutureConverters.toJava(ask(compareActor, new CompareProtocol.FilesContainer(originalFile, compareFile), 1000))
+                .thenApply(response -> ok((String) response));
     }
-
-
-
 }
